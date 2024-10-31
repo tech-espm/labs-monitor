@@ -1,0 +1,272 @@
+
+<div id="divVoltar" class="d-none">
+	<button type="button" class="btn btn-sm btn-outline-dark" onclick="modoFull(null)"><i class="fa fa-undo"></i> Voltar</button>
+</div>
+
+<div id="divCards" class="row"></div>
+
+<%- contentFor("styles") %>
+
+<style type="text/css">
+	.card-estudante {
+		background-color: #fff;
+		padding: 0.5rem;
+		border-radius: 0.35rem;
+		min-height: 100%;
+	}
+
+	.erro > .card-estudante {
+		background-color: #faa;
+	}
+
+	.card-estudante > h2 {
+		font-size: 0.75rem;
+		font-weight: bold;
+		text-align: center;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		margin: 0 0 0.35rem;
+	}
+
+	.card-estudante > img {
+		display: block;
+		width: 100%;
+		max-width: 1024px;
+		margin: 0 auto 0.35rem;
+		cursor: pointer;
+	}
+
+	.card-estudante span {
+		font-size: 0.75rem;
+	}
+</style>
+
+<%- contentFor("scripts") %>
+
+<script type="text/javascript">
+	//<![CDATA[
+	"use strict";
+
+	let sala = <%- JSON.stringify(item) %>,
+		titulo = document.getElementsByTagName("h1")[0],
+		tituloOriginal = titulo.innerHTML,
+		totalEstudantes = 0,
+		telasAtualizadas = 0,
+		vez = 0,
+		cardClasseOculto = "d-none",
+		cardClasseVisivel = "col-6 col-sm-4 col-md-3 col-lg-2 mb-3",
+		cardFull = null,
+		estudantesPorId = {},
+		divVoltar = document.getElementById("divVoltar"),
+		divCards = document.getElementById("divCards");
+
+	sala.nowOffset = Date.now() - sala.now;
+
+	function modoFull(card) {
+		if (cardFull) {
+			cardFull.className = cardClasseVisivel;
+			cardFull = null;
+		}
+
+		if (card) {
+			divVoltar.className = "text-center mb-3";
+			for (let id in estudantesPorId) {
+				const estudante = estudantesPorId[id];
+				if (estudante.card)
+					estudante.card.className = cardClasseOculto;
+			}
+			cardFull = card;
+			cardFull.className = "col mb-3";
+		} else {
+			divVoltar.className = "d-none";
+			for (let id in estudantesPorId) {
+				const estudante = estudantesPorId[id];
+				if (estudante.card)
+					estudante.card.className = cardClasseVisivel;
+			}
+		}
+	}
+
+	function atualizacaoTerminada(card) {
+		if (card.spanUltimoPing) {
+			let ultimo_ping = parseInt(card.getAttribute("data-ultimo_ping"));
+			if (ultimo_ping) {
+				ultimo_ping += sala.nowOffset;
+				const delta = (Math.max(0, Date.now() - ultimo_ping) / 1000) | 0;
+				card.spanUltimoPing.textContent = delta + "s atrás";
+				if (delta > 20)
+					card.classList.add("erro");
+				else
+					card.classList.remove("erro");
+			} else {
+				card.classList.add("erro");
+			}
+		}
+
+		telasAtualizadas++;
+		if (telasAtualizadas >= totalEstudantes)
+			setTimeout(atualizar, 2000);
+	}
+
+	function atualizarTela(id) {
+		const estudante = estudantesPorId[id];
+
+		if (!estudante || !estudante.card || !estudante.card.imgs || estudante.card.getAttribute("data-pausa")) {
+			atualizacaoTerminada();
+			return;
+		}
+
+		const imgs = estudante.card.imgs;
+
+		let imgAtual, imgNova;
+
+		if (imgs[0].classList.contains("d-none")) {
+			imgAtual = imgs[1];
+			imgNova = imgs[0];
+		} else {
+			imgAtual = imgs[0];
+			imgNova = imgs[1];
+		}
+
+		imgNova.onerror = function () {
+			atualizacaoTerminada(estudante.card);
+		};
+		imgNova.onload = function () {
+			estudante.card.setAttribute("data-ultimo_ping", estudante.ultimo_ping);
+			imgAtual.classList.add("d-none");
+			imgNova.classList.remove("d-none");
+			atualizacaoTerminada(estudante.card);
+		};
+		imgNova.setAttribute("src", `${sala.apiPrefixoExterno}/api/monitorSala/obterTela?id=${sala.id}&idusuario=${sala.idusuario}&token=${sala.token}&idestudante=${id}&vez=${vez}`);
+	}
+
+	function cardOnclick(e) {
+		if (e.target && e.target.tagName === "IMG") {
+			if (cardFull === this)
+				modoFull(null);
+			else
+				modoFull(this);
+		}
+	}
+
+	function excluirEstudante(id) {
+		const estudante = estudantesPorId[id];
+		if (!estudante)
+			return;
+
+		Swal.okcancel({
+			html: `Tem certeza que deseja remover "${encode(estudante.nome)}" da sala?`,
+			confirmButtonText: "Remover"
+		}, null, true).then(function (result) {
+			if (JsonWebApi.active)
+				return;
+
+			if (result.value) {
+				Swal.wait();
+
+				JsonWebApi.post(`${sala.apiPrefixoExterno}/api/monitorSala/excluirEstudante`, {
+					id: sala.id,
+					token: sala.token,
+					idusuario: sala.idusuario,
+					idestudante: id,
+				}, function (response) {
+					if (response.success)
+						Swal.success("Estudante removido com sucesso! A tela desaparecerá automaticamente em breve " + emoji.happy).then(atualizarSalas);
+					else
+						Swal.error(response.value + " " + emoji.sad);
+				});
+			}
+		});
+	}
+
+	function atualizar() {
+		JsonWebApi.post(sala.apiPrefixoExterno + "/api/monitorSala/listarEstudantes", sala, function (response) {
+			if (response.success) {
+				const estudantesAntigos = estudantesPorId;
+				estudantesPorId = response.value || {};
+
+				let reorganizar = false;
+				totalEstudantes = 0;
+
+				for (let id in estudantesPorId) {
+					const estudanteAntigo = estudantesAntigos[id];
+					const estudante = estudantesPorId[id];
+
+					let card = estudanteAntigo?.card;
+
+					if (!card) {
+						card = document.createElement("div");
+						card.className = (cardFull ? cardClasseOculto : cardClasseVisivel);
+						card.onclick = cardOnclick;
+						card.innerHTML = `
+						<div class="card-estudante d-flex flex-column justify-content-between shadow">
+							<h2 title="${encodeValue(estudante.nome)}">${encode(estudante.nome)}</h2>
+							<img id="img-1-${id}" />
+							<img id="img-2-${id} d-none" />
+							<div class="d-flex flex-row align-items-center justify-content-between">
+								<span>Nunca</span>
+								<button type="button" class="btn btn-sm btn-outline-danger" title="Remover da Sala" onclick="excluirEstudante(${id})"><i class="fa fa-times"></i></button>
+							</div>
+						</div>
+						`;
+						card.spanUltimoPing = card.getElementsByTagName("span")[0];
+						card.imgs = card.getElementsByTagName("img");
+						reorganizar = true;
+					}
+
+					totalEstudantes++;
+					estudante.card = card;
+
+					delete estudantesAntigos[id];
+				}
+
+				for (let id in estudantesAntigos) {
+					reorganizar = true;
+					break;
+				}
+
+				if (reorganizar) {
+					titulo.innerHTML = `${tituloOriginal} <small>(Estudantes: ${totalEstudantes})</small>`;
+
+					while (divCards.firstChild)
+						divCards.removeChild(divCards.firstChild);
+
+					const estudantesOrdenados = [];
+					for (let id in estudantesPorId)
+						estudantesOrdenados.push(estudantesPorId[id]);
+
+					estudantesOrdenados.sort((a, b) => (a.nome < b.nome ? -1 : 1));
+
+					for (let i = 0; i < estudantesOrdenados.length; i++)
+						divCards.appendChild(estudantesOrdenados[i].card);
+				}
+
+				if (!totalEstudantes) {
+					divCards.innerHTML = `<div class="col-12 text-center mb-3">Não há estudantes na sala ${emoji.sad}</div>`;
+					setTimeout(atualizar, 2000);
+				} else {
+					vez++;
+					telasAtualizadas = 0;
+
+					for (let id in estudantesPorId)
+						atualizarTela(id);
+				}
+			} else {
+				Swal.error({
+					html: `Erro ao carregar a lista de estudantes: ${encode(response.value)}
+					<br/>
+					<br/>
+					Por favor, recarregue a página e tente novamente ${emoji.sad}
+					`
+				}).then(function () {
+					window.location.reload();
+				});
+				return;
+			}
+		});
+	}
+
+	atualizar();
+
+	//]]>
+</script>

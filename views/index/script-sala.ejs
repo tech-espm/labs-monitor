@@ -1,0 +1,100 @@
+<div class="modal fade" id="modalCriarSala" tabindex="-1" aria-labelledby="modalCriarSalaLabel" aria-hidden="true">
+	<div class="modal-dialog modal-sm">
+		<form class="modal-content" id="modalCriarSalaForm">
+			<div class="modal-header">
+				<h5 class="modal-title" id="modalCriarSalaLabel">Criar Sala</h5>
+				<button type="button" class="close" data-dismiss="modal" aria-label="Fechar">
+					<span aria-hidden="true">&times;</span>
+				</button>
+			</div>
+			<div class="modal-body">
+				<div class="form-group mb-0">
+					<label for="modalCriarSalaNome">Nome da Sala</label>
+					<input type="text" maxlength="35" class="form-control text-uppercase" spellcheck="false" id="modalCriarSalaNome" name="nome" />
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button type="submit" class="btn btn-primary">Criar</button>
+				<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+			</div>
+		</form>
+	</div>
+</div>
+
+<script type="text/javascript">
+	//<![CDATA[
+	"use strict";
+
+	maskTextId("#modalCriarSalaNome");
+
+	$("#modalCriarSalaForm").validate({
+		rules: {
+			nome: {
+				required: true
+			},
+		},
+		
+		submitHandler: function (form) {
+			if (JsonWebApi.active)
+				return;
+
+			const nome = $("#modalCriarSalaNome").val().normalize().trim();
+
+			Swal.wait();
+
+			JsonWebApi.postFormData("<%- root %>/api/sala/criar", form, function (response) {
+				if (response.success) {
+					$("#modalCriarSala").modal("hide");
+					Swal.success("Sala criada com sucesso! " + emoji.happy).then(function () {
+						window.location.href = "<%- root %>/sala/" + nome;
+					});
+				} else {
+					Swal.error(response.value + " " + emoji.sad);
+				}
+			});
+		}
+	});
+
+	function criarSala() {
+		resetForm("#modalCriarSalaForm");
+
+		$("#modalCriarSala").modal({
+			backdrop: true,
+			keyboard: true
+		});
+	}
+
+	function excluirSala(id, nome) {
+		let n;
+
+		Swal.okcancel({
+			html: 'Tem certeza que deseja excluir a sala "' + nome + '"? Esta operação NÃO pode ser desfeita!<br/><br/>Para confirmar a exclusão, por favor, digite abaixo o nome da sala conforme exibido acima.<br/><br/><label for="txtExcluirNome">Nome da sala</label><input type="text" class="form-control text-uppercase" spellcheck="false" autocomplete="off" id="txtExcluirNome" />',
+			confirmButtonText: "Excluir",
+			preConfirm: function () {
+				n = $("#txtExcluirNome").val().toUpperCase();
+				return true;
+			}
+		}, null, true).then(function (result) {
+			if (JsonWebApi.active)
+				return;
+
+			if (result.value) {
+				if (n !== nome.toUpperCase()) {
+					Swal.error("O nome da sala não confere! " + emoji.sad);
+					return;
+				}
+
+				Swal.wait();
+
+				JsonWebApi.delete("<%- root %>/api/sala/excluir", function (response) {
+					if (response.success)
+						Swal.success("Sala excluída com sucesso! " + emoji.happy).then(atualizarSalas);
+					else
+						Swal.error(response.value + " " + emoji.sad);
+				}, "id", id);
+			}
+		});
+	}
+
+	//]]>
+</script>

@@ -1,0 +1,230 @@
+<div class="modal fade" id="modalSala" tabindex="-1" aria-labelledby="modalSalaLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="modalSalaLabel">Sala</h5>
+			</div>
+			<div class="modal-body">
+				<p>
+					Deixa este popup e a aba do navegador abertas para permanecer na sala. 😊
+				</p>
+				<p>
+					Cuidado com as configurações do navegador, para evitar que esta aba seja colocada para dormir, para liberar memória, porque isso fará com que você saia da sala. 😳
+				</p>
+				<video id="video" style="display: block; width: 100%; margin: 0 auto; max-width: 500px; object-fit: contain;" muted autoplay></video>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" onclick="pararGravacao()">Sair da Sala</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script type="text/javascript">
+	//<![CDATA[
+	"use strict";
+
+	let stream = null,
+		videoUrl = null,
+		video = document.getElementById("video"),
+		canvas = document.createElement("canvas"),
+		versao = 0,
+		largura = 0,
+		altura = 0,
+		estudante = null,
+		salaGravacao = null,
+		context = null,
+		obtendoStream = false;
+
+	function pararGravacao() {
+		$("#modalSala").modal("hide");
+
+		if (!stream)
+			return;
+
+		versao++;
+
+		try {
+			if (video.pause)
+				video.pause();
+		} catch (ex) {
+			// Apenas ignora...
+		}
+
+		if ("srcObject" in video)
+			video.srcObject = null;
+		else if ("mozSrcObject" in video)
+			video.mozSrcObject = null;
+		else
+			video.src = null;
+
+		if (videoUrl) {
+			URL.revokeObjectURL(videoUrl);
+			videoUrl = null;
+		}
+
+		try {
+			if (stream.stop)
+				stream.stop();
+		} catch (ex) {
+			// Apenas ignora...
+		}
+
+		try {
+			const tracks = stream.getTracks();
+			for (let i = 0; i < tracks.length; i++) {
+				try {
+					if (tracks[i] && tracks[i].stop)
+						tracks[i].stop();
+				} catch (ex) {
+					// Apenas ignora...
+				}
+			}
+		} catch (ex) {
+			// Apenas ignora...
+		}
+
+		stream = null;
+	}
+
+	async function iniciarGravacao(id, nome) {
+		if (stream || obtendoStream || JsonWebApi.active)
+			return;
+
+		$("#modalSalaLabel").text(nome);
+
+		Swal.wait();
+
+		try {
+			obtendoStream = true;
+
+			stream = await (navigator.getDisplayMedia ?
+				navigator.getDisplayMedia({ video: true, audio: false }) :
+				(navigator.mediaDevices.getDisplayMedia ?
+					navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }) :
+					navigator.mediaDevices.getUserMedia({ video: { mediaSource: "screen" }, audio: false })
+				)
+			);
+		} catch (ex) {
+			Swal.error("Ocorreu um erro ao tentar acessar a tela: " + (ex.message || ex.toString()) + " " + emoji.sad);
+			return;
+		} finally {
+			obtendoStream = false;
+		}
+
+		stream.oninactive = function () {
+			pararGravacao();
+		};
+
+		$("#modalSala").modal({
+			backdrop: "static",
+			keyboard: false
+		});
+
+		try {
+			if ("srcObject" in video) {
+				video.srcObject = stream;
+			} else if ("mozSrcObject" in video) {
+				video.mozSrcObject = stream;
+			} else {
+				videoUrl = URL.createObjectURL(pipStream);
+				video.src = videoUrl;
+			}
+
+			video.play();
+		} catch (ex) {
+			Swal.error("Ocorreu um erro ao tentar exibir a tela: " + (ex.message || ex.toString()) + " " + emoji.sad).then(pararGravacao);
+			return;
+		}
+
+		versao++;
+		const versaoAtual = versao;
+
+		const capturar = function () {
+			if (!stream || versaoAtual !== versao)
+				return;
+
+			if (!video.videoWidth || !video.videoHeight) {
+				setTimeout(capturar, 5000);
+				return;
+			}
+
+			const larguraDesejada = 1024,
+				alturaDesejada = (video.videoHeight * 1024 / video.videoWidth) | 0;
+
+			if (!alturaDesejada)
+				return;
+
+			if (!largura || largura !== larguraDesejada || altura !== alturaDesejada) {
+				largura = larguraDesejada;
+				altura = alturaDesejada;
+				canvas.width = larguraDesejada;
+				canvas.height = alturaDesejada;
+				context = canvas.getContext("2d", { alpha: false });
+			}
+
+			context.drawImage(video, 0, 0, largura, altura);
+
+			canvas.toBlob(function (blob) {
+				if (!salaGravacao || !estudante) {
+					pararGravacao();
+					return;
+				}
+
+				const formData = new FormData();
+				formData.append("id", estudante.id);
+				formData.append("idsala", estudante.idsala);
+				formData.append("token", estudante.token);
+				formData.append("tela", blob);
+
+				JsonWebApi.postFormData(salaGravacao.apiPrefixoExterno + "/api/monitorSala/enviarTela", formData, function (response) {
+					if (response.success) {
+						console.log(response.value);
+					} else {
+						Swal.error({
+							html: `${encode(response.value)}
+							<br/>
+							<br/>
+							Por favor, entre novamente na sala ${emoji.sad}
+							`
+						}).then(function () {
+							pararGravacao();
+							atualizarSalas();
+						});
+						return;
+					}
+
+					setTimeout(capturar, 2000);
+				});
+			}, "image/jpeg", 0.85);
+		};
+
+		JsonWebApi.post("<%- root %>/api/sala/iniciarAcessoEstudante", {
+			id: id
+		}, function (response) {
+			if (response.success) {
+				salaGravacao = response.value;
+
+				if (!salaGravacao || !salaGravacao.token || !salaGravacao.apiPrefixoExterno) {
+					Swal.error("Dados de início de sessão inválidos " + emoji.sad).then(pararGravacao);
+					return;
+				}
+
+				estudante = {
+					id: salaGravacao.idusuario,
+					idsala: salaGravacao.id,
+					token: salaGravacao.token,
+				};
+
+				Swal.close();
+
+				capturar();
+			} else {
+				Swal.error(response.value).then(pararGravacao);
+			}
+		});
+		
+	}
+
+	//]]>
+</script>
