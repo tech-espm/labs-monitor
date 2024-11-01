@@ -53,6 +53,7 @@
 		totalEstudantes = 0,
 		telasAtualizadas = 0,
 		vez = 0,
+		errosOcorridos = 0,
 		cardClasseOculto = "d-none",
 		cardClasseVisivel = "col-6 col-sm-4 col-md-3 col-lg-2 mb-3",
 		cardFull = null,
@@ -180,9 +181,19 @@
 		});
 	}
 
+	function atualizarTelas() {
+		vez++;
+		telasAtualizadas = 0;
+
+		for (let id in estudantesPorId)
+			atualizarTela(id);
+	}
+
 	function atualizar() {
 		JsonWebApi.post(sala.apiPrefixoExterno + "/api/monitorSala/listarEstudantes", sala, function (response) {
 			if (response.success) {
+				errosOcorridos = 0;
+
 				const estudantesAntigos = estudantesPorId;
 				estudantesPorId = response.value || {};
 
@@ -246,23 +257,23 @@
 					divCards.innerHTML = `<div class="col-12 text-center mb-3">Não há estudantes na sala ${emoji.sad}</div>`;
 					setTimeout(atualizar, 2000);
 				} else {
-					vez++;
-					telasAtualizadas = 0;
-
-					for (let id in estudantesPorId)
-						atualizarTela(id);
+					atualizarTelas();
 				}
 			} else {
-				Swal.error({
-					html: `Erro ao carregar a lista de estudantes: ${encode(response.value)}
-					<br/>
-					<br/>
-					Por favor, recarregue a página e tente novamente ${emoji.sad}
-					`
-				}).then(function () {
-					window.location.reload();
-				});
-				return;
+				errosOcorridos++;
+				if (errosOcorridos >= 3) {
+					Swal.error({
+						html: `Erro ao carregar a lista de estudantes: ${encode(response.value)}
+						<br/>
+						<br/>
+						Por favor, recarregue a página e tente novamente ${emoji.sad}
+						`
+					}).then(function () {
+						window.location.reload();
+					});
+				} else {
+					atualizarTelas();
+				}
 			}
 		});
 	}
