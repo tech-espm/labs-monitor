@@ -49,7 +49,7 @@
 
 	let sala = <%- JSON.stringify(item) %>,
 		titulo = document.getElementsByTagName("h1")[0],
-		tituloOriginal = titulo.innerHTML,
+		tituloOriginal = "Sala <%= item.nome %>", // titulo.innerHTML,
 		totalEstudantes = 0,
 		telasAtualizadas = 0,
 		vez = 0,
@@ -61,6 +61,7 @@
 		divCards = document.getElementById("divCards");
 
 	sala.nowOffset = Date.now() - sala.now;
+	titulo.textContent = tituloOriginal;
 
 	function modoFull(card) {
 		if (cardFull) {
