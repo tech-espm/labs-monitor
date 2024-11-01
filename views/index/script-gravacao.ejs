@@ -6,10 +6,13 @@
 			</div>
 			<div class="modal-body">
 				<p>
-					Deixa este popup e a aba do navegador abertas para permanecer na sala. 😊
+					Deixe este popup e a aba do navegador abertas para permanecer na sala. 😊
 				</p>
 				<p>
 					Cuidado com as configurações do navegador, para evitar que esta aba seja colocada para dormir, para liberar memória, porque isso fará com que você saia da sala. 😳
+				</p>
+				<p>
+					<b>Lembre-se de compartilhar utilizando a opção "tela cheia" ou "tela inteira", e não apenas uma janela ou guia!</b>
 				</p>
 				<video id="video" style="display: block; width: 100%; margin: 0 auto; max-width: 500px; object-fit: contain;" muted autoplay></video>
 			</div>
@@ -31,6 +34,7 @@
 		versao = 0,
 		largura = 0,
 		altura = 0,
+		errosOcorridos = 0,
 		estudante = null,
 		salaGravacao = null,
 		context = null,
@@ -179,19 +183,22 @@
 
 				JsonWebApi.postFormData(salaGravacao.apiPrefixoExterno + "/api/monitorSala/enviarTela", formData, function (response) {
 					if (response.success) {
-						console.log(response.value);
+						errosOcorridos = 0;
 					} else {
-						Swal.error({
-							html: `${encode(response.value)}
-							<br/>
-							<br/>
-							Por favor, entre novamente na sala ${emoji.sad}
-							`
-						}).then(function () {
-							pararGravacao();
-							atualizarSalas();
-						});
-						return;
+						errosOcorridos++;
+						if (errosOcorridos >= 3) {
+							Swal.error({
+								html: `${encode(response.value)}
+								<br/>
+								<br/>
+								Por favor, entre novamente na sala ${emoji.sad}
+								`
+							}).then(function () {
+								pararGravacao();
+								atualizarSalas();
+							});
+							return;
+						}
 					}
 
 					setTimeout(capturar, 2000);
